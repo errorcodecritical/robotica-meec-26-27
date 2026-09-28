@@ -27,8 +27,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         ros-jazzy-demo-nodes-py \
         ros-jazzy-desktop \
         ros-jazzy-gz-ros2-control \
+        ros-jazzy-joint-state-broadcaster \
+        ros-jazzy-joint-trajectory-controller \
         ros-jazzy-moveit \
         ros-jazzy-ros-gz \
+        ros-jazzy-ros2controlcli \
         ros-jazzy-tf2-tools \
     && locale-gen en_US.UTF-8
     
