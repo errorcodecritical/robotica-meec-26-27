@@ -1,0 +1,28 @@
+version: '3.8'
+
+services:
+  ros:
+    image: robotics-jazzy-lite6:local
+    build:
+      context: .
+      dockerfile: Dockerfile
+    network_mode: host
+    environment:
+      - DISPLAY=${DISPLAY}
+      - QT_X11_NO_MITSHM=1
+      - XAUTHORITY=/tmp/.Xauthority
+    volumes:
+      - /tmp/.X11-unix:/tmp/.X11-unix
+      - /dev/:/dev/
+      - /tmp/.X11-unix:/tmp/.X11-unix:rw
+      - ~/.Xauthority:/tmp/.Xauthority:rw
+      - ./ros2_ws:/ros2_ws
+    stdin_open: true
+    tty: true
+    init: true
+    command:
+      - bash
+      - -c
+      - |
+        rosdep install --from-paths src --ignore-src --rosdistro jazzy -y
+        colcon build

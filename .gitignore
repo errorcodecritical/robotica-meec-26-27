@@ -1,0 +1,5 @@
+# Ignore everything inside the workspace folder
+ros2_ws/*
+
+# Do not ignore the src directory itself
+!ros2_ws/src/
