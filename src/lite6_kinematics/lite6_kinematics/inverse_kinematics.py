@@ -74,9 +74,10 @@ def pose_error(T_c, T_d) -> np.ndarray:
         orientation of T_c to that of T_d, expressed in {0}. Use
         rotation_vector(), which is provided.
     """
-    # TODO (LW2, Part B)
-    raise NotImplementedError('pose_error() is not implemented yet')
-
+    
+    dp = T_d[:3, 3] - T_c[:3, 3]
+    R_err = T_d[:3, :3] @ T_c[:3, :3].T
+    return np.concatenate((dp, rotation_vector(R_err)))
 
 def jacobian(q, h: float = None) -> np.ndarray:
     """Numerical Jacobian of the end-effector pose, equation (2).
@@ -93,8 +94,15 @@ def jacobian(q, h: float = None) -> np.ndarray:
     """
     if h is None:
         h = H
-    # TODO (LW2, Part B)
-    raise NotImplementedError('jacobian() is not implemented yet')
+        
+    q = np.asarray(q, dtype=float)
+    T0 = forward_kinematics(q)
+    J = np.zeros((6, 6))
+    for i in range(6):
+        q_i = q.copy()
+        q_i[i] += h                                   # perturb joint i only
+        J[:, i] = pose_error(T0, forward_kinematics(q_i)) / h
+    return J
 
 
 def inverse_kinematics(T_d, q_start, h: float = None):
@@ -119,8 +127,46 @@ def inverse_kinematics(T_d, q_start, h: float = None):
     """
     if h is None:
         h = H
-    # TODO (LW2, Part B)
-    raise NotImplementedError('inverse_kinematics() is not implemented yet')
+ 
+    T_d = np.asarray(T_d, dtype=float)
+    q = np.array(q_start, dtype=float)
+
+    for k in range(MAX_ITER + 1):
+        # 1. error at the current configuration
+        e = pose_error(forward_kinematics(q), T_d)
+
+        # 2. converged: wrap angles into their ranges, then report
+        if np.linalg.norm(e[:3]) < TOL_POS and np.linalg.norm(e[3:]) < TOL_ORI:
+            for i in range(6):
+                lo, hi = JOINT_LIMITS[i]
+                if q[i] < lo or q[i] > hi:
+                    for shift in (2 * math.pi, -2 * math.pi):
+                        if lo <= q[i] + shift <= hi:
+                            q[i] += shift
+                            break
+            inside = np.all((q >= JOINT_LIMITS[:, 0]) & (q <= JOINT_LIMITS[:, 1]))
+            return q, ('converged' if inside else 'out_of_range'), k
+
+        # 3. iteration budget exhausted
+        if k == MAX_ITER:
+            return q, 'max_iterations', k
+
+        # 4. Newton step: solve J dq = e
+        J = jacobian(q, h)
+        try:
+            dq = np.linalg.solve(J, e)
+        except np.linalg.LinAlgError:
+            return q, 'singular', k
+
+        # 5. step limit: scale the whole step so no joint moves more than MAX_STEP
+        biggest = np.max(np.abs(dq))
+        if biggest > MAX_STEP:
+            dq = dq * (MAX_STEP / biggest)
+
+        # 6. update
+        q = q + dq
+
+    return q, 'max_iterations', MAX_ITER   # not reached
 
 
 # =============================================================================
@@ -150,28 +196,37 @@ class IkNode(Node):
     def __init__(self, target_topic='/lite6_ik/target', joint_states_topic='/joint_states',
                  solution_topic='/lite6_ik/solution'):
         super().__init__('ik_node')
-        # TODO (LW2, Part B): create the publisher on solution_topic and the
-        # two subscriptions (callbacks: self.on_joint_state, self.on_target).
-        raise NotImplementedError('IkNode.__init__ is not implemented yet')
+        self.q_latest = None # latest joint angles, JOINT_NAMES order
+        self.pub = self.create_publisher(JointState, solution_topic, 10)
+        self.create_subscription(JointState, joint_states_topic, self.on_joint_state, 10)
+        self.create_subscription(PoseStamped, target_topic, self.on_target, 10)
 
     def on_joint_state(self, msg):
         """Called for every JointState: keep the latest joint angles."""
-        # TODO (LW2, Part B)
-        #   Pick the angles of JOINT_NAMES BY NAME from msg.name / msg.position:
-        #   the order is not promised and the message may carry other joints.
-        #   Store them; do nothing else here (this runs inside the spin, and
-        #   joint states arrive hundreds of times per second).
-        raise NotImplementedError('IkNode.on_joint_state is not implemented yet')
+        by_name = dict(zip(msg.name, msg.position))
+        try:
+            self.q_latest = np.array([by_name[n] for n in JOINT_NAMES], dtype=float)
+        except KeyError:
+            pass    
 
     def on_target(self, msg):
         """Called for every desired pose: solve it and publish the solution."""
-        # TODO (LW2, Part B)
-        #   1. if no joint states have arrived yet, log a warning and return
-        #   2. T_d = transform_from_pose(msg)
-        #   3. q, status, n_iter = inverse_kinematics(T_d, <latest angles>)
-        #   4. if status == 'converged': publish the JointState described in
-        #      the class docstring; otherwise log the status (and do not publish)
-        raise NotImplementedError('IkNode.on_target is not implemented yet')
+        if self.q_latest is None:
+            self.get_logger().warn('No joint states received yet; ignoring target.')
+            return
+
+        T_d = transform_from_pose(msg)
+        q, status, n_iter = inverse_kinematics(T_d, self.q_latest.copy())
+
+        if status != 'converged':
+            self.get_logger().info(f'IK did not converge: {status} after {n_iter} iterations.')
+            return
+
+        out = JointState()
+        out.header.stamp = msg.header.stamp           # copy the TARGET's stamp, for ik_check
+        out.name = list(JOINT_NAMES)
+        out.position = [float(x) for x in q]
+        self.pub.publish(out)
 
 
 # =============================================================================
