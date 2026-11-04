@@ -10,10 +10,6 @@ build/
 install/
 log/
 
-# Test outputs land here; keep the folder, not the clutter.
-shared/*
-!shared/.gitkeep
-
 __pycache__/
 *.pyc
 .vscode/
