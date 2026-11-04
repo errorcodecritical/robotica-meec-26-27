@@ -14,7 +14,7 @@ MODE_POSITION = 0
 SET_STATE_MOTION = 0
 MAX_JOINT_SPEED_DEG_S = 54.0
 MAX_TCP_SPEED_MM_S = 150.0
-DEFAULT_CONFIG = 'config' / 'robot.yaml'
+DEFAULT_CONFIG = 'config/robot.yaml'
 
 
 def load_config(path: Path = DEFAULT_CONFIG) -> Mapping[str, Any]:
