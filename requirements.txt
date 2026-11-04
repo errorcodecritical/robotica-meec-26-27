@@ -1,0 +1,6 @@
+xarm-python-sdk
+numpy
+scipy
+PyYAML
+matplotlib
+pytest

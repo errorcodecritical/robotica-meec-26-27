@@ -1,0 +1,8 @@
+# Robot and bench-specific safety settings used by the standalone lab scripts.
+robot_ip: 192.168.1.181
+safety:
+  reduced_mode: true
+  max_joint_speed_deg_s: 54
+  max_tcp_speed_mm_s: 150
+  # Set the bench-approved limits: [x_max, x_min, y_max, y_min, z_max, z_min] mm.
+  tcp_boundary_mm: [200, -200, 200, -200, 200, -200]
