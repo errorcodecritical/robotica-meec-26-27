@@ -2,7 +2,14 @@
 
 Forward and inverse kinematics of the UFACTORY Lite 6, as ROS 2 nodes — Robotics
 (02000537), 2026/2027. The handouts are the specification; this file is the map of the
-package. Labwork 1 comes first; **[Labwork 2 starts here](#labwork-2--inverse-kinematics)**.
+package. Labwork 1 comes first.
+
+> **Labwork 2 is now in its own package, [`src/lite6_ik`](../lite6_ik/README.md)**: the
+> inverse kinematics is solved algebraically, in closed form. The Newton's-method version of
+> Labwork 2 that this package also holds (`inverse_kinematics.py`, `ik_check.py`, `ik_study.py`,
+> `config/lw2_targets.yaml`, `test/test_inverse_kinematics.py`, and the Labwork 2 section below)
+> is superseded: it is left in place only so that nothing you already edited is touched.
+> Do the Labwork 2 of the current handout in `lite6_ik`.
 
 ## The files
 

@@ -36,3 +36,7 @@ lab build
 ```
 
 Your copy then shadows the image's, because the overlay is sourced last.
+
+This folder already carries one such overlay, of the package `xarm_gazebo` alone: it turns the
+simulated robot to face the checkerboard of `lite6_checkers`. `xarm_gazebo/LAB.md` says what
+differs from the image.

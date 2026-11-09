@@ -174,7 +174,8 @@ ros2 topic echo /ufactory/robot_states --once
 | `move_joints_demo` | `lab driver` | self-contained; the driver API, read and command |
 | `jog_demo` | `lab driver` | one joint at a time, via the reusable `Lite6Client` |
 | `fk_node`, `fk_check` | `lab sim`, `lab real` | Labwork 1, from `src/lite6_kinematics`: you write `fk_node` (joint states in, end-effector pose out); `fk_check` checks it against the model and the robot — see [its README](src/lite6_kinematics/README.md) |
-| `ik_node`, `ik_check`, `ik_study` | `lab sim`, `lab real` (`ik_study`: nothing) | Labwork 2, same package: you write `ik_node` (desired pose in, joint angles out, by Newton's method); `ik_check` checks it against the model and the robot; `ik_study` runs the convergence studies |
+| `ik_node`, `ik_check`, `ik_study` | `lab sim`, `lab real` (`ik_study`: nothing) | Labwork 2, from `src/lite6_ik` (a new package beside `lite6_kinematics`): you write `ik_node` (desired pose in, selected joint angles out, by the algebraic solution); `ik_check` checks it against the model and the robot; `ik_study` runs the studies — see [its README](src/lite6_ik/README.md) |
+| *(the Newton version of Labwork 2 in `src/lite6_kinematics`)* | | superseded by `src/lite6_ik`; left in place so that nothing you already edited is touched. It is not what Labwork 2 asks for now |
 
 Start your own package in `src/`:
 
@@ -334,7 +335,8 @@ docker/ros_setup.sh     Step 7 of the handout, sourced by every shell
 docker/start-display    host X / VNC (WSLg on the windows branch)
 .devcontainer/          VS Code "Reopen in Container"
 src/lite6_control/      worked example ROS 2 Python package
-src/lite6_kinematics/   Labworks 1-2: forward and inverse kinematics (templates + checkers)
+src/lite6_kinematics/   Labwork 1: forward kinematics (template + checker)
+src/lite6_ik/           Labwork 2: algebraic inverse kinematics (template + checkers)
 src/                    YOUR packages     (= ~/dev_ws/src)
 shared/                 files in and out  (= ~/shared)
 ```

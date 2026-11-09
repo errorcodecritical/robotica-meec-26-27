@@ -225,20 +225,40 @@ cmd_moveit() {
     run ros2 launch xarm_moveit_config lite6_moveit_fake.launch.py "$@"
 }
 
+# Run a simulation launch, and put the checkerboard and its 24 men (package
+# lite6_checkers, 8x8 squares of 30 mm) into the world as soon as Gazebo is up. The
+# upstream launch files hard-code their world, so the board is spawned into the
+# running one rather than written into it. The spawner waits for Gazebo, puts the
+# board and the men in, and exits; it does not outlive the simulation.
+with_board() {
+    local pid=""
+    if ros2 pkg prefix lite6_checkers >/dev/null 2>&1; then
+        ros2 run lite6_checkers spawn_board &
+        pid=$!
+    else
+        warn "lite6_checkers is not built, so the simulation starts without the checkerboard and its pieces."
+        warn "Build it once with:  lab build   (then open a new shell)"
+    fi
+    "$@"
+    local rc=$?
+    [ -n "${pid}" ] && kill "${pid}" 2>/dev/null
+    return ${rc}
+}
+
 cmd_sim() {
     require_gazebo "lab sim"
     require_no_simulation "lab sim"
-    say "Gazebo Harmonic + MoveIt + ros2_control"
+    say "Gazebo Harmonic + MoveIt + ros2_control, with the checkerboard and its pieces"
     echo
-    run ros2 launch xarm_moveit_config lite6_moveit_gazebo.launch.py "$@"
+    with_board run ros2 launch xarm_moveit_config lite6_moveit_gazebo.launch.py "$@"
 }
 
 cmd_sim_lite() {
     require_gazebo "lab sim-lite"
     require_no_simulation "lab sim-lite"
-    say "Gazebo + ros2_control only: no MoveIt, no RViz (open one with:  lab rviz)"
+    say "Gazebo + ros2_control only, with the checkerboard and its pieces: no MoveIt, no RViz (open one with:  lab rviz)"
     echo
-    run ros2 launch xarm_gazebo lite6_beside_table_gazebo.launch.py \
+    with_board run ros2 launch xarm_gazebo lite6_beside_table_gazebo.launch.py \
         load_controller:=true show_rviz:=false "$@"
 }
 
@@ -332,6 +352,7 @@ cmd_kill() {
     pkill -f "gz sim"        2>/dev/null
     pkill -x  gz             2>/dev/null
     pkill -f "ros2 launch"   2>/dev/null
+    pkill -f  spawn_board    2>/dev/null   # the checkerboard spawner, if it is still waiting for Gazebo
     pkill -f  rviz2          2>/dev/null
     pkill -f  move_group     2>/dev/null
     pkill -f  parameter_bridge 2>/dev/null   # a stale /clock publisher makes sim time jump
