@@ -84,8 +84,97 @@ def inverse_kinematics(T_d) -> list:
           TOL_WRIST, those axes are aligned and every solution returned has
           q4 = 0.
     """
-    # TODO (LW2, Part B)
-    raise NotImplementedError('inverse_kinematics() is not implemented yet')
+    T_d = np.asarray(T_d, dtype=float)
+    if T_d.shape != (4, 4) or not np.all(np.isfinite(T_d)):
+        return []
+
+    # Removing the last-link offset gives the origin of frame {4}. Its
+    # position depends only on joints 1-3, so position and orientation can be
+    # solved independently.
+    p04 = T_d[:3, 3] - 0.0615 * T_d[:3, 2]
+    x, y = float(p04[0]), float(p04[1])
+    z = float(p04[2] - 0.2433)
+    radial = math.hypot(x, y)
+
+    # In the shoulder plane, the remaining two links have lengths 0.2 and
+    # hypot(0.2276, 0.087). The law of cosines gives the two elbow branches.
+    link1 = 0.2
+    link2 = math.hypot(0.2276, 0.087)
+    reach_sq = radial * radial + z * z
+    cos_elbow = (link1 * link1 + link2 * link2 - reach_sq) / (2.0 * link1 * link2)
+    reach_slack = 1e-10
+    if cos_elbow < -1.0 - reach_slack or cos_elbow > 1.0 + reach_slack:
+        return []
+    cos_elbow = min(1.0, max(-1.0, cos_elbow))
+
+    elbow_offset = math.atan2(0.087, 0.2276)
+    shoulder_branches = [(math.atan2(y, x), radial)] if radial > 1e-12 else [(0.0, 0.0)]
+    if radial > 1e-12:
+        shoulder_branches.append((shoulder_branches[0][0] + math.pi, -radial))
+
+    solutions = []
+    for q1, signed_radial in shoulder_branches:
+        # q1 is not constrained by position on the base axis; q1=0 is the
+        # deterministic representative used for that singular position.
+        elbow_magnitude = math.acos(cos_elbow)
+        for elbow_sign in (1.0, -1.0):
+            q3 = elbow_sign * elbow_magnitude - elbow_offset
+            phase = q3 + elbow_offset
+            a = link1 - link2 * math.cos(phase)
+            b = link2 * math.sin(phase)
+            q2 = math.atan2(signed_radial, z) - math.atan2(b, a)
+
+            c1, s1 = math.cos(q1), math.sin(q1)
+            beta = q2 - q3
+            cb, sb = math.cos(beta), math.sin(beta)
+            R03 = np.array([
+                [c1 * cb, c1 * sb, s1],
+                [s1 * cb, s1 * sb, -c1],
+                [-sb, cb, 0.0],
+            ])
+            R36 = R03.T @ T_d[:3, :3]
+            cos_q5 = min(1.0, max(-1.0, -float(R36[1, 2])))
+            sin_q5_magnitude = math.hypot(float(R36[1, 0]), float(R36[1, 1]))
+            q5_magnitude = math.atan2(sin_q5_magnitude, cos_q5)
+
+            if q5_magnitude < TOL_WRIST:
+                # At the aligned-wrist singularity, the pose fixes q4+q6.
+                wrist_branches = [(0.0, 0.0, math.atan2(R36[2, 0], R36[0, 0]))]
+            elif math.pi - q5_magnitude < TOL_WRIST:
+                # At the opposed-wrist singularity, choose q4=0; the pose
+                # fixes q6-q4. This branch is normally outside joint limits.
+                wrist_branches = [(0.0, math.pi, math.atan2(R36[2, 0], R36[2, 1]))]
+            else:
+                wrist_branches = []
+                for q5 in (q5_magnitude, -q5_magnitude):
+                    sin_q5 = math.sin(q5)
+                    q4 = math.atan2(-R36[2, 2] / sin_q5, -R36[0, 2] / sin_q5)
+                    q6 = math.atan2(R36[1, 1] / sin_q5, -R36[1, 0] / sin_q5)
+                    wrist_branches.append((q4, q5, q6))
+
+            for q4, q5, q6 in wrist_branches:
+                q = np.array([q1, q2, q3, q4, q5, q6], dtype=float)
+                q = (q + math.pi) % (2.0 * math.pi) - math.pi
+                q[q <= -math.pi] += 2.0 * math.pi
+
+                # Reject numerical branches that do not reproduce the target.
+                # The wrist tolerance intentionally permits the tiny angular
+                # approximation specified for singular configurations.
+                T_check = forward_kinematics(q)
+                position_error = np.linalg.norm(T_check[:3, 3] - T_d[:3, 3])
+                relative_rotation = T_check[:3, :3].T @ T_d[:3, :3]
+                cosine_error = min(1.0, max(-1.0, (np.trace(relative_rotation) - 1.0) / 2.0))
+                orientation_error = math.acos(cosine_error)
+                position_tolerance = 1e-8 + 0.0615 * TOL_WRIST
+                if position_error > position_tolerance or orientation_error > max(1e-7, 2.0 * TOL_WRIST):
+                    continue
+                if not any(
+                    np.all(np.abs((q - other + math.pi) % (2.0 * math.pi) - math.pi) <= TOL_SAME)
+                    for other in solutions
+                ):
+                    solutions.append(q)
+
+    return solutions
 
 
 def select_solution(solutions, q_current):
@@ -109,8 +198,33 @@ def select_solution(solutions, q_current):
     remain, the one at the smallest euclidean distance from q_current is
     selected, and the returned vector is that solution with the replaced angles.
     """
-    # TODO (LW2, Part B)
-    raise NotImplementedError('select_solution() is not implemented yet')
+    q_current = np.asarray(q_current, dtype=float)
+    if q_current.shape != (6,) or not np.all(np.isfinite(q_current)):
+        return None
+
+    executable = []
+    two_pi = 2.0 * math.pi
+    for solution in solutions:
+        q = np.asarray(solution, dtype=float)
+        if q.shape != (6,) or not np.all(np.isfinite(q)):
+            continue
+        adjusted = np.empty(6, dtype=float)
+        for i in range(6):
+            lo, hi = JOINT_LIMITS[i]
+            k_min = math.ceil((lo - q[i]) / two_pi)
+            k_max = math.floor((hi - q[i]) / two_pi)
+            if k_min > k_max:
+                break
+
+            nearest_k = int(round((q_current[i] - q[i]) / two_pi))
+            k = min(k_max, max(k_min, nearest_k))
+            adjusted[i] = q[i] + two_pi * k
+        else:
+            executable.append(adjusted)
+
+    if not executable:
+        return None
+    return min(executable, key=lambda q: float(np.linalg.norm(q - q_current))).copy()
 
 
 # =============================================================================
@@ -142,30 +256,40 @@ class IkNode(Node):
     def __init__(self, target_topic='/lite6_ik/target', joint_states_topic='/joint_states',
                  solution_topic='/lite6_ik/solution'):
         super().__init__('ik_node')
-        # TODO (LW2, Part B): create the publisher on solution_topic and the
-        # two subscriptions (callbacks: self.on_joint_state, self.on_target).
-        raise NotImplementedError('IkNode.__init__ is not implemented yet')
+        self.q_latest = None
+        self.solution_pub = self.create_publisher(JointState, solution_topic, 10)
+        self.joint_states_sub = self.create_subscription(
+            JointState, joint_states_topic, self.on_joint_state, 10)
+        self.target_sub = self.create_subscription(
+            PoseStamped, target_topic, self.on_target, 10)
 
     def on_joint_state(self, msg):
         """Called for every JointState: keep the latest joint angles."""
-        # TODO (LW2, Part B)
-        #   Pick the angles of JOINT_NAMES BY NAME from msg.name / msg.position:
-        #   the order is not promised and the message may carry other joints.
-        #   Store them; do nothing else here (this runs inside the spin, and
-        #   joint states arrive hundreds of times per second).
-        raise NotImplementedError('IkNode.on_joint_state is not implemented yet')
+        by_name = dict(zip(msg.name, msg.position))
+        if all(name in by_name for name in JOINT_NAMES):
+            self.q_latest = np.array([by_name[name] for name in JOINT_NAMES], dtype=float)
 
     def on_target(self, msg):
         """Called for every desired pose: solve it and publish the solution."""
-        # TODO (LW2, Part B)
-        #   1. if no joint states have arrived yet, log a warning and return
-        #   2. T_d = transform_from_pose(msg)
-        #   3. compute the solutions and select one from the latest angles,
-        #      with the two functions above
-        #   4. if there is a selected solution publish the JointState described
-        #      in the class docstring; otherwise log unreachable or
-        #      out_of_range (and do not publish)
-        raise NotImplementedError('IkNode.on_target is not implemented yet')
+        if self.q_latest is None:
+            self.get_logger().warning('No joint states received yet; ignoring target.')
+            return
+
+        solutions = inverse_kinematics(transform_from_pose(msg))
+        if not solutions:
+            self.get_logger().warning('unreachable: target pose has no inverse-kinematics solution.')
+            return
+
+        selected = select_solution(solutions, self.q_latest.copy())
+        if selected is None:
+            self.get_logger().warning('out_of_range: no inverse-kinematics solution is within joint limits.')
+            return
+
+        out = JointState()
+        out.header.stamp = msg.header.stamp
+        out.name = list(JOINT_NAMES)
+        out.position = [float(angle) for angle in selected]
+        self.solution_pub.publish(out)
 
 
 # =============================================================================
